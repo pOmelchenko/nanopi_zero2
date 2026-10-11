@@ -1,103 +1,23 @@
-# NanoPi Zero2: Armbian, SPI1 и дисплей ILI9341
+# Armbian: SPI1 и дисплей ILI9341
 
-> **Статус: экспериментальный, не окончательно квалифицированный.** Документ
-> фиксирует рабочий результат, полученный на указанном ниже Armbian rolling
-> build, но последние сквозные эксперименты и доводка автоматической установки
-> выполнялись на официальной Ubuntu FriendlyElec. После обновления rolling-образа
-> путь необходимо проверять заново; совместная работа дисплея и XPT2046 на
-> Armbian пока не подтверждена.
+Процедура проверена для NanoPi Zero2 / RK3528, Armbian 26.8 rolling,
+Debian 13 Trixie, kernel `6.18.41-current-rockchip64`, `/dev/spidev0.0`.
+Результат — тестовая таблица ILI9341 и UTF-8 текст. После обновления rolling-образа
+нужна повторная проверка. Совместная работа с XPT2046 и актуальное сквозное
+развёртывание остаются в [разработке](../development/README.md).
 
-Эта инструкция описывает экспериментальную рабочую конфигурацию NanoPi Zero2 с
-дисплеем `2.8" TFT 240xRGBx320 V1.1`: от чистого Armbian до вывода
-кириллического текста через SPI. Это не основной рекомендуемый маршрут для
-новой установки — для него используйте
-[официальную Ubuntu FriendlyElec](./ubuntu.md). Все номера FPC ниже относятся к
-30-контактному разъёму NanoPi Zero2. Все команды с локальными путями `scripts/`
-и `overlays/` выполняются из корня этого repository.
+Для новой установки основной маршрут — [официальная Ubuntu FriendlyElec](ubuntu-spi.md).
+Все номера FPC относятся к 30-pin разъёму NanoPi. Перед началом сверить
+[общую распиновку](../reference/hardware.md): RESET — FPC23 / line 0,
+DC — FPC25 / line 22; FPC24 и gpiochip4 lines 19/20/21 использовать запрещено.
+Провода переставлять при отключённом питании. Наличие touch-проводов
+не подтверждает работу драйвера на Armbian.
 
-Проверенная конфигурация:
+Все команды с путями `tools/` выполняются от корня репозитория.
 
-```text
-NanoPi Zero2 / RK3528
-Armbian 26.8 rolling, Debian 13 Trixie
-Linux 6.18.41-current-rockchip64
-SPI device: /dev/spidev0.0
-Display controller: ILI9341-compatible
-```
-
-Используемые артефакты:
-
-- [`../overlays/rk3528-spidev.dts`](../overlays/rk3528-spidev.dts) — Armbian Device Tree overlay;
-- [`../scripts/test_ili9341.py`](../scripts/test_ili9341.py) — общий тест дисплея и UTF-8 текста.
-
-## Критическое предупреждение о GPIO
-
-**Не использовать `/dev/gpiochip4` линии 19, 20 и 21 для дисплея.** Это
-`GPIO4_C3`, `GPIO4_C4` и `GPIO4_C5`. В официальном FriendlyElec DTS они заняты
-PWM-регуляторами `vdd_gpu`, `vdd_cpu` и `vdd_logic`; FPC24 / линия 19 поэтому
-небезопасна для общей распиновки. Попытка запросить линии 20/21 как обычные GPIO
-останавливала плату: замирал heartbeat LED, пропадали SSH и UART, помогал только
-перезапуск питания.
-
-Рабочие и безопасные линии управления дисплеем:
-
-```text
-RESET = FPC 23 = GPIO4_A0 = /dev/gpiochip4 line 0
-DC    = FPC 25 = GPIO4_C6 = /dev/gpiochip4 line 22
-```
-
-Все сигнальные GPIO RK3528 имеют уровень 3.3 V. На них нельзя подавать 5 V.
-Переставлять провода следует только при отключённом питании платы.
-
-## Подключение дисплея
-
-Минимальная рабочая распиновка:
-
-| Дисплей | FPC NanoPi | Назначение в Linux |
-|---|---:|---|
-| `VCC` | 1 | 5 V; также доступны контакты 2 и 3 |
-| `GND` | 9 | GND; также 16, 18, 26, 28 и 30 |
-| `CS` | 21 | SPI1 CS0 / GPIO1_C1 |
-| `RESET` | 23 | GPIO4_A0, gpiochip4 line 0 |
-| `DC` | 25 | GPIO4_C6, gpiochip4 line 22 |
-| `SDI (MOSI)` | 19 | SPI1 MOSI / GPIO1_B7 |
-| `SCK` | 17 | SPI1 CLK / GPIO1_B6 |
-| `LED` | 10 | 3.3 V; также доступен контакт 11 |
-| `SDO (MISO)` | 20 | SPI1 MISO / GPIO1_C0; для вывода необязателен |
-
-Контакты резистивного тачскрина подключаются к той же SPI-шине:
-
-| Touch header | FPC NanoPi | Назначение |
-|---|---:|---|
-| `T_CLK` | 17 | SPI1 CLK |
-| `T_CS` | 22 | SPI1 CS1 / GPIO1_C2 |
-| `T_DIN` | 19 | SPI1 MOSI |
-| `T_DO` | 20 | SPI1 MISO |
-| `T_IRQ` | 4 | GPIO4_A4, active low |
-
-Это физическая разводка проверенного общего жгута. Тач-драйвер и CS1 overlay
-на Armbian ещё не квалифицированы: текущий проверенный Armbian route использует
-только дисплей, поэтому наличие проводов не означает software-support claim.
-
-### Полная распиновка 30-pin FPC
-
-| FPC | Сигнал | FPC | Сигнал |
-|---:|---|---:|---|
-| 1 | 5 V | 16 | GND |
-| 2 | 5 V | 17 | GPIO1_B6 / SPI1 CLK |
-| 3 | 5 V | 18 | GND |
-| 4 | GPIO4_A4 | 19 | GPIO1_B7 / SPI1 MOSI |
-| 5 | GPIO4_A5 | 20 | GPIO1_C0 / SPI1 MISO |
-| 6 | GPIO4_A6 | 21 | GPIO1_C1 / SPI1 CS0 |
-| 7 | GPIO4_A7 | 22 | GPIO1_C2 / SPI1 CS1 |
-| 8 | GPIO4_B4 | 23 | GPIO4_A0 |
-| 9 | GND | 24 | GPIO4_C3 / PWM0 / `vdd_gpu`; не использовать как GPIO |
-| 10 | 3.3 V | 25 | GPIO4_C6 |
-| 11 | 3.3 V | 26 | GND |
-| 12 | GPIO1_B2 | 27 | AOL, аналоговый аудиовыход |
-| 13 | GPIO1_B3 | 28 | GND |
-| 14 | GPIO1_B4 | 29 | AOR, аналоговый аудиовыход |
-| 15 | GPIO1_B5 | 30 | GND |
+- [Armbian overlay](../../tools/target/overlays/rk3528-spidev.dts).
+- [Тест ILI9341](../../tools/target/test_ili9341.py).
+- [Загрузочная схема](../reference/boot.md) и [результаты проверки](../reference/validation/README.md).
 
 ## 1. Подготовить чистый Armbian
 
@@ -160,8 +80,8 @@ python3 -m venv --system-site-packages /opt/ili9341
 
 ```bash
 scp \
-  overlays/rk3528-spidev.dts \
-  scripts/test_ili9341.py \
+  tools/target/overlays/rk3528-spidev.dts \
+  tools/target/test_ili9341.py \
   root@192.168.1.88:/root/
 ```
 
@@ -320,57 +240,6 @@ spi1_csn0: GPIO1_C1 CS0
 `compatible = "rohm,dh2228fv"`, поскольку современные ядра обычно отвергают
 универсальный `compatible = "spidev"` в Device Tree.
 
-## Диагностика
-
-### Плата зависает сразу после запуска скрипта
-
-1. Отключить питание.
-2. Убедиться, что `DC` идёт на FPC 25, а `RESET` — на FPC 23.
-3. Никогда не передавать скрипту `--dc 19`, `--dc 20`, `--dc 21`,
-   `--reset 19`, `--reset 20` или `--reset 21` для `/dev/gpiochip4`.
-4. Запустить сначала на 1 MHz без `--read-id` и `--hold`.
-
-### Подсветка есть, изображения нет
-
-Проверить `CS`, `DC`, `RESET`, MOSI и SCK, затем наличие `/dev/spidev0.0`.
-`LED` управляет только подсветкой и сам по себе не подтверждает работу SPI.
-MISO для первой проверки можно не подключать.
-
-### Изображение искажено или нестабильно
-
-Снизить частоту до 500 kHz или 1 MHz, укоротить провода и проверить общий GND:
-
-```bash
-python3 /root/test_ili9341.py --speed 500000
-```
-
-### Вместо кириллицы квадраты
-
-```bash
-apt-get install --reinstall -y fonts-dejavu-core
-ls -l /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
-```
-
-### Восстановление через UART
-
-Отладочный UART NanoPi Zero2 работает на нестандартной скорости:
-
-```text
-1500000 baud, 8N1
-```
-
-В проверенной конфигурации на macOS адаптер появился как
-`/dev/cu.usbserial-31110`. `pyserial-miniterm` корректно работал с этой
-скоростью, тогда как `screen` мог показывать нечитаемые символы:
-
-```bash
-python3 -m serial.tools.miniterm \
-  /dev/cu.usbserial-31110 1500000 \
-  --raw
-```
-
-Если зависла вся SoC, UART также перестаёт отвечать — тогда нужен power cycle.
-
 ## Повторное развёртывание после очистки eMMC
 
 Короткий чек-лист:
@@ -388,8 +257,7 @@ python3 -m serial.tools.miniterm \
 наличие `/dev/spidev0.0`. Исходник overlay хранится в репозитории, поэтому его
 можно заново скомпилировать под установленный DTB.
 
-## Смежные документы
+## Диагностика
 
-- [Обзор NanoPi Zero2](../README.md)
-- [Официальная Ubuntu FriendlyElec](./ubuntu.md)
-- [Общие сведения о vendor-образах FriendlyElec](./friendlyelec-vendor.md)
+Сбой изображения, GPIO и подключение UART описаны в
+[диагностике и восстановлении](troubleshooting.md).

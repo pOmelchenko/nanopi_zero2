@@ -1,60 +1,15 @@
-# Официальные FriendlyElec-образы NanoPi Zero2
+# FriendlyElec Debian 13: сборочный маршрут SPI1
 
-Этот документ описывает общую загрузочную схему официальных Ubuntu и Debian для
-NanoPi Zero2, а также воспроизводимый маршрут для официального Debian 13.
-Все команды с локальными путями `patches/` выполняются из корня этого
-repository.
+**Статус: разработка, без аппаратного запуска.** DTS, применимость патча
+и сборочные скрипты исследованы для закреплённых исходников; загрузка
+изменённого Debian и вывод картинки не выполнены. Этот документ не является
+готовой инструкцией с аппаратной квалификацией.
 
-Подробная инструкция для обследованной Ubuntu 24.04 находится в
-[`ubuntu.md`](./ubuntu.md). Электрическая распиновка и общие предупреждения
-находятся в [`README.md`](../README.md).
-
-## Общая архитектура
-
-Официальные образы FriendlyElec используют vendor kernel 6.1 и не применяют
-Armbian-механизм `/boot/armbianEnv.txt`. DTB упакован в `resource.img`.
-
-Исходники, исследованные 2026-08-01:
-
-```text
-friendlyarm/kernel-rockchip nanopi6-v6.1.y
-221af17f44d3b513b53b694d5b41614e53c5ab1b
-
-friendlyarm/sd-fuse_rk3528 kernel-6.1.y
-b35de9f870e0a0702ea33369154c9ec12494bcd1
-```
-
-В vendor DTS подтверждено:
-
-```text
-SPI1 node: spi@ff9d0000
-initial status: disabled
-pinctrl: spi1_pins, spi1_csn0
-pins: GPIO1_B6 CLK, GPIO1_B7 MOSI, GPIO1_C0 MISO, GPIO1_C1 CS0
-aliases: spi1 = &spi1
-```
-
-В kernel config уже включены:
-
-```text
-CONFIG_OF_OVERLAY=y
-CONFIG_SPI_ROCKCHIP=y
-CONFIG_SPI_SPIDEV=y
-```
-
-Поэтому [`official-friendlyelec-spi1.patch`](../patches/official-friendlyelec-spi1.patch)
-меняет только DTS NanoPi Zero2: включает SPI1 и добавляет `spidev@0`. Ожидаемый
-userspace-путь — `/dev/spidev1.0`.
-
-`dtbo.img` в `sd-fuse_rk3528` используется для OverlayFS rootfs и не является
-аналогом Armbian Device Tree overlay.
-
-## Цели сборки
-
-| Система | Каталог/аргумент `sd-fuse_rk3528` | Python GPIO |
-|---|---|---|
-| Debian 13 Trixie | `debian-trixie-core-arm64` | пакетный libgpiod 2.2.1 совместим |
-| Ubuntu 24.04 Noble | `ubuntu-noble-core-arm64` | пакетный libgpiod 1.6.3 несовместим; нужен venv |
+Локальные пути `tools/` разрешаются от корня репозитория.
+[Загрузочная схема](../reference/boot.md), [проводка](../reference/hardware.md)
+и [версии исходников](../../tools/dependencies/friendlyelec-kernel/README.md)
+задают входные условия. Для проверенного варианта использовать
+[FriendlyElec Ubuntu](../guides/ubuntu-spi.md).
 
 ## Официальный Debian 13
 
@@ -89,10 +44,10 @@ SPI-разделы DTS и применимость patch.
 NANOPI_SPI_REPO=/path/to/nanopi-zero2-spi
 
 git -C kernel-rk3528 apply --check \
-  "$NANOPI_SPI_REPO/patches/official-friendlyelec-spi1.patch"
+  "$NANOPI_SPI_REPO/tools/dependencies/friendlyelec-kernel/official-friendlyelec-spi1.patch"
 
 git -C kernel-rk3528 apply \
-  "$NANOPI_SPI_REPO/patches/official-friendlyelec-spi1.patch"
+  "$NANOPI_SPI_REPO/tools/dependencies/friendlyelec-kernel/official-friendlyelec-spi1.patch"
 
 git -C kernel-rk3528 diff --check
 git -C kernel-rk3528 diff -- \
@@ -147,7 +102,15 @@ gpioinfo /dev/gpiochip4
 Ожидаются `okay` и `/dev/spidev1.0`. Фактическое имя всегда имеет приоритет:
 номер до точки передаётся тесту через `--bus`, после точки — через `--device`.
 
-### 6. Установить runtime и вывести текст
+### 6. Скопировать тест, установить runtime и вывести текст
+
+С рабочей станции, от корня репозитория:
+
+```bash
+scp tools/target/test_ili9341.py root@192.168.1.88:/root/
+```
+
+Дальнейшие команды выполнять на NanoPi:
 
 ```bash
 apt-get update
@@ -175,33 +138,12 @@ gpiochip отличается, передать фактический путь.
 остаются теми же. Линии 19/20/21 использовать запрещено: в vendor DTS они
 связаны с PWM-регуляторами GPU, CPU и logic.
 
-## Наблюдаемая разметка официальной Ubuntu
+## Критерии проверки
 
-На голой Ubuntu 24.04.3 с eMMC 233 GiB по SSH обнаружено:
-
-```text
-/dev/mmcblk2p3  PARTLABEL=dtbo
-/dev/mmcblk2p4  PARTLABEL=resource
-/dev/mmcblk2p5  PARTLABEL=kernel
-/dev/mmcblk2p8  PARTLABEL=rootfs
-/dev/mmcblk2p9  PARTLABEL=userdata
-```
-
-Это наблюдение нельзя превращать в универсальное предположение. Перед любой
-записью раздела проверять `PARTLABEL`; подробная процедура резервного копирования
-описана в [`ubuntu.md`](./ubuntu.md).
-
-## Статус проверки
-
-| Часть | Статус |
-|---|---|
-| Распиновка и ILI9341 | Проверены на Armbian и официальной Ubuntu 24.04 |
-| Vendor DTS и kernel config | Подтверждены исходниками FriendlyElec |
-| Patch к `rk3528-nanopi-rev01.dts` | Проверен через `git apply` |
-| `sd-fuse_rk3528` для Debian | Соответствует официальному маршруту |
-| Совместимость Debian 13 с libgpiod 2.2.1 | Подтверждена пакетами Debian |
-| Загрузка изменённого официального Debian | Не выполнена |
-| Вывод картинки на официальном Debian | Не выполнен |
+Собрать полный образ, сохранить его хеш, загрузить на NanoPi, проверить
+фактический SPI-путь и GPIO, тестовую таблицу и UTF-8, доступ по SSH,
+перезагрузку и восстановление. Touch требует отдельной квалификации.
+Результаты фиксировать в [справочнике проверок](../reference/validation/README.md).
 
 ## Источники
 

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "investigated_at": "2026-08-01",
+  "kernel": {
+    "repository": "https://github.com/friendlyarm/kernel-rockchip.git",
+    "branch": "nanopi6-v6.1.y",
+    "commit": "221af17f44d3b513b53b694d5b41614e53c5ab1b",
+    "dts": "arch/arm64/boot/dts/rockchip/rk3528-nanopi-rev01.dts"
+  },
+  "image_tools": {
+    "repository": "https://github.com/friendlyarm/sd-fuse_rk3528.git",
+    "branch": "kernel-6.1.y",
+    "commit": "b35de9f870e0a0702ea33369154c9ec12494bcd1"
+  },
+  "patches": [
+    "official-friendlyelec-spi1.patch",
+    "official-friendlyelec-spi1-touch.patch"
+  ]
+}
